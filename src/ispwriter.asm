@@ -18,76 +18,82 @@
 		ld	a, $F0
 		out0	(CBAR), a
 
-		; erase the RAM disk
+		; copy the fill byte into place
 		xor	a
 		out0	(DAR0L), a
 		out0	(DAR0H), a
 		out0	(SAR0B), a
+		out0	(BCR0H), a
 		ld	a, $02
 		out0	(DAR0B), a
 		ld	bc, fill_byte
 		out0	(SAR0L), c
 		out0	(SAR0H), b
-		ld	bc, 0
-		out0	(BCR0L), c
-		out0	(BCR0H), b
-		ld	bc, 0110000000001010b
-		out0	(DMODE), c
-		out0	(DSTAT), b		; 64k filled
-		out0	(DSTAT), b		; 128k filled
-		out0	(DSTAT), b		; 192k filled
-		out0	(DSTAT), b		; 256k filled
-		out0	(DSTAT), b		; 320k filled
-		out0	(DSTAT), b		; 384k filled
+		ld	a, 1
+		out0	(BCR0L), a
+		ld	hl, 0110000000000010b
+		out0	(DMODE), l
+		out0	(DSTAT), h
 
-		; copy the ROM disk to $10000
+		xor	a
+		out0	(SAR0L), a
+		out0	(SAR0H), a
+		ld	a, 2
+		out0	(SAR0B), a
+
+		ld	a, $ff
+		out0	(BCR0L), a
+		out0	(BCR0H), a
+		
+		ld	b, 6
+filler:		out0	(DSTAT), h
+		djnz	filler
+
+		; patch everything to pretend the ROM is at $10000 not $80000
+		ld	a, 1
+		ld	($0157 + patch_start), a
+		ld	($02b6 + patch_start), a
+		ld	($1cac + patch_start), a
+		ld	($1d7a + patch_start), a
+
+		; copy the boot ROM to $10000
 		xor	a
 		out0	(DAR0L), a
 		out0	(DAR0H), a
 		out0	(SAR0B), a
 		inc	a
 		out0	(DAR0B), a
-		ld	bc, $2200 + patch_start
+		ld	bc, patch_start
 		out0	(SAR0L), c
 		out0	(SAR0H), b
-		ld	bc, 32768
+		ld	bc, patch_size
 		out0	(BCR0L), c
 		out0	(BCR0H), b
 		ld	bc, 0110000000000010b
 		out0	(DMODE), c
 		out0	(DSTAT), b		; burst mode, pow!
 
-		; patch the BIOS for ROM disk and "ROM" CPM/BIOS
-		xor	a			; CPM now lives at $0c000 not $805b1
-		ld	($1c4d + patch_start), a
-		ld	($1c56 + patch_start), a
-		ld	a, $c0
-		ld	($1c4e + patch_start), a
-
-		xor	a			; ROM disk now lives at $10000
-		ld	($1d26 + patch_start), a
-		inc	a
-		ld	($1d27 + patch_start), a
-
-		; copy the BIOS and friends to $c000
+		; copy the BIOS and friends from $10572 to $0e000 and boot from there
 		xor	a
-		out0	(SAR0B), a
 		out0	(DAR0B), a
 		out0	(DAR0L), a
-		ld	a, $c0
+		ld	a, $e0
 		out0	(DAR0H), a
-		ld	bc, patch_start + $5b1
+		ld	a, $01
+		out0	(SAR0B), a
+		ld	bc, $572
 		out0	(SAR0L), c
 		out0	(SAR0H), b
-		ld	bc, $2000
+		ld	bc, $2000 - $572
 		out0	(BCR0L), c
 		out0	(BCR0H), b
 		ld	bc, 0110000000000010b
 		out0	(DMODE), c
 		out0	(DSTAT), b		; burst mode, bam!
 
-		; warm-boot the CPM bios
-		jp	$D671			; cold boot entry point
+		ld	sp, $d000		; fix SP to something safer than the middle of the BIOS
+
+		jp	$f6e4			; cold boot entry point
 
 fill_byte	.db	$e5
 message		.text	13, 10, 'CPM-enabled BIOS patched', 13, 10, 0
